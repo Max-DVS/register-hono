@@ -1,25 +1,25 @@
-FROM oven/bun:slim AS base
-
-FROM base AS builder
+# Build stage
+FROM oven/bun:slim AS builder
 
 WORKDIR /app
 
-COPY package*json tsconfig.json src ./
-COPY . .
-
-
+# Copy package files first for better caching
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM base AS runner
+# Copy rest of the files
+COPY . .
+
+# Build the binary
+RUN bun build ./src/index.ts --compile --outfile server
+
+# Final stage
+FROM debian:bookworm-slim
+
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 bunjs
-RUN adduser --system --uid 1001 hono
+# Copy only the compiled binary
+COPY --from=builder /app/server ./server
 
-COPY --from=builder --chown=hono:bunjs /app/node_modules /app/node_modules
-COPY --from=builder --chown=hono:bunjs /app/package.json /app/package.json
-
-USER hono
-EXPOSE 3000
-
-CMD ["bun", "run", "start"]
+# Run the binary
+CMD ["./server"]
